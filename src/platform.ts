@@ -13,7 +13,11 @@ export const IS_WIN = process.platform === "win32";
 export const COMPUTER = IS_MAC ? "this Mac" : IS_WIN ? "this PC" : "this computer";
 export const BIN = IS_MAC ? "the Mac's Trash" : IS_WIN ? "the Recycle Bin" : "the Trash";
 
-export const FFMPEG_HINT = IS_MAC ? "brew install ffmpeg" : IS_WIN ? "winget install Gyan.FFmpeg" : "sudo apt install ffmpeg";
+export const FFMPEG_HINT = IS_MAC
+  ? "brew install ffmpeg"
+  : IS_WIN
+    ? "winget install Gyan.FFmpeg"
+    : "install ffmpeg via your package manager (apt, dnf, pacman, zypper, etc.)";
 
 // PowerShell single-quoted string: the only character that needs escaping is the quote itself.
 export const psQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -48,7 +52,8 @@ export function moveToBin(target: string): string {
     execFileSync("gio", ["trash", target], { stdio: "ignore" });
     return BIN;
   } catch {
-    const bin = join(homedir(), ".local", "share", "Trash", "files");
+    const xdgData = process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
+    const bin = join(xdgData, "Trash", "files");
     mkdirSync(bin, { recursive: true });
     const dest = join(bin, `${basename(target)}-${Date.now()}`);
     renameSync(target, dest);

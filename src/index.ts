@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { LocalCore, shapes, type Core } from "./core.js";
+import { registerCustomTools } from "./custom/tools.js";
 import { PLAYBOOK } from "./playbook.js";
 import { RemoteCore } from "./remote.js";
 import { PORT, startServer } from "./server.js";
@@ -341,5 +342,7 @@ server.registerTool(
   },
   (args) => reply(patient("flow_presenter", core.presenter(args))),
 );
+
+registerCustomTools(server, reply);
 
 await server.connect(new StdioServerTransport());

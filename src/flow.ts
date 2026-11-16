@@ -43,6 +43,8 @@ export async function getFlowState(detailed = false): Promise<FlowState> {
 // Menus close on Escape; the account panel does not and needs its own close button.
 async function dismissOverlays(page: Page): Promise<void> {
   await leaveSideMenu(page);
+  const getStarted = page.getByRole("button", { name: "Get started", exact: true });
+  if (await getStarted.isVisible().catch(() => false)) await getStarted.click({ timeout: 5000 }).catch(() => {});
   await page.keyboard.press("Escape");
   const closePanel = page.getByRole("button", { name: "Close account panel" });
   if (await closePanel.isVisible().catch(() => false)) await closePanel.click({ timeout: 5000 }).catch(() => {});
@@ -395,6 +397,39 @@ async function closeSettings(page: Page): Promise<void> {
   if (await popover.count()) await page.getByRole("button", { name: "Settings trigger" }).click({ timeout: 5000 }).catch(() => undefined);
 }
 
+async function setDuration(page: Page, duration: number): Promise<void> {
+  const radio = page.getByRole("radio", { name: `${duration}s`, exact: true }).first();
+  if (await radio.isVisible().catch(() => false)) {
+    if (!(await radio.isChecked())) {
+      await radio.click();
+      await pause(page, 500);
+    }
+    return;
+  }
+  const slider = page.locator('input[aria-label="Length"], input[type="range"]').first();
+  if (!(await slider.isVisible().catch(() => false))) {
+    throw new Error(`Flow has no "${duration}s" option or Length slider for the current mode/model.`);
+  }
+  await slider.focus();
+  const current = Number(await slider.inputValue().catch(() => NaN));
+  if (!Number.isNaN(current)) {
+    const diff = Math.round(duration - current);
+    const key = diff > 0 ? "ArrowRight" : "ArrowLeft";
+    for (let i = 0; i < Math.abs(diff); i++) {
+      await page.keyboard.press(key);
+      await pause(page, 60);
+    }
+  } else {
+    await slider.evaluate((el, val) => {
+      const input = el as HTMLInputElement;
+      input.value = String(val);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, duration);
+  }
+  await pause(page, 400);
+}
+
 async function applySettings(page: Page, job: Job): Promise<number> {
   const s = job.params;
   const framesMode = Boolean(s.first_frame || s.last_frame);
@@ -405,7 +440,7 @@ async function applySettings(page: Page, job: Job): Promise<number> {
   const model = s.type === "image" && LEGACY_IMAGE_MODEL.test(s.model ?? "") ? LATEST_IMAGE_MODEL : s.model;
   if (model) await pickModel(page, model);
   if (s.type === "video" && s.resolution) await pickRadio(page, new RegExp(`^${s.resolution}`));
-  if (s.type === "video" && s.duration) await pickRadio(page, `${s.duration}s`);
+  if (s.type === "video" && s.duration) await setDuration(page, s.duration);
   await pickRadio(page, `x${s.variants ?? 1}`);
   await pause(page, 600);
   // The quote is "<N> credits". Low balances add an "Add AI credits" banner link that the old /credits?$/ also matched.

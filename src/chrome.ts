@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -24,11 +24,44 @@ const CHROME_PATHS = [
   process.env.FLOW_MCP_CHROME,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/local/bin/chromium",
+  "/opt/google/chrome/chrome",
+  "/snap/bin/chromium",
+  "/var/lib/flatpak/exports/bin/com.google.Chrome",
+  "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
+  join(homedir(), ".local/share/flatpak/exports/bin/com.google.Chrome"),
+  join(homedir(), ".local/share/flatpak/exports/bin/org.chromium.Chromium"),
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   // Windows also installs Chrome here: 32-bit builds, and per-user installs made without admin rights.
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe` : undefined,
 ].filter((p): p is string => Boolean(p));
+
+const LINUX_BROWSER_BINS = [
+  "google-chrome",
+  "google-chrome-stable",
+  "chromium",
+  "chromium-browser",
+  "brave-browser",
+  "brave",
+  "microsoft-edge",
+];
+
+function findBrowserOnPath(): string | undefined {
+  if (process.platform !== "linux") return undefined;
+  for (const bin of LINUX_BROWSER_BINS) {
+    try {
+      const resolved = execFileSync("which", [bin], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+      if (resolved && existsSync(resolved)) return resolved;
+    } catch {
+      // Binary not on PATH; try next candidate.
+    }
+  }
+  return undefined;
+}
 
 let browser: Browser | null = null;
 
@@ -41,11 +74,15 @@ async function cdpUp(): Promise<boolean> {
   }
 }
 
-// Real Chrome with a dedicated profile: Google sign-in works normally and the
+// Real Chrome/Chromium with a dedicated profile: Google sign-in works normally and the
 // session persists, while the user's everyday profile is never touched.
 export function chromeExecutable(): string {
-  const chromePath = CHROME_PATHS.find((p) => existsSync(p));
-  if (!chromePath) throw new Error("Google Chrome not found. Set FLOW_MCP_CHROME to the Chrome executable path.");
+  const chromePath = CHROME_PATHS.find((p) => existsSync(p)) ?? findBrowserOnPath();
+  if (!chromePath) {
+    throw new Error(
+      "Chrome/Chromium browser not found. Install Chrome or Chromium, or set FLOW_MCP_CHROME to the browser executable path.",
+    );
+  }
   return chromePath;
 }
 

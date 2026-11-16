@@ -7,11 +7,14 @@ import { z } from "zod";
 import { CACHE_DIR as CAPTIONS_DIR } from "./captions.js";
 import { HOME_DIR } from "./chrome.js";
 import { OUTPUT_ROOT, shapes, type Core } from "./core.js";
+import { INSPECTOR_DIR } from "./custom/selector_registry.js";
+import { dispatchCustomApi } from "./custom/tools.js";
 
 export const PORT = Number(process.env.FLOW_MCP_PORT ?? 8787);
 export const TOKEN_FILE = join(HOME_DIR, "token");
 const UPLOAD_DIR = join(HOME_DIR, "uploads");
 const STUDIO_HTML = fileURLToPath(new URL("../studio/index.html", import.meta.url));
+const STUDIO_CUSTOM_JS = fileURLToPath(new URL("../studio/custom.js", import.meta.url));
 const MAX_UPLOAD = 200 * 1024 * 1024;
 
 const MIME: Record<string, string> = {
@@ -44,7 +47,13 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
 const inside = (file: string, dir: string) => resolve(file).startsWith(resolve(dir) + sep);
 
 function sendMedia(req: IncomingMessage, res: ServerResponse, file: string) {
-  if (!(inside(file, OUTPUT_ROOT) || inside(file, UPLOAD_DIR) || inside(file, CAPTIONS_DIR)) || !existsSync(file)) return json(res, 404, { error: "Not found." });
+  const allowed =
+    inside(file, OUTPUT_ROOT) ||
+    inside(file, UPLOAD_DIR) ||
+    inside(file, CAPTIONS_DIR) ||
+    inside(file, INSPECTOR_DIR) ||
+    inside(file, join(HOME_DIR, "library"));
+  if (!allowed || !existsSync(file)) return json(res, 404, { error: "Not found." });
   const { size } = statSync(file);
   const type = MIME[extname(file).toLowerCase()] ?? "application/octet-stream";
   const range = req.headers.range?.match(/bytes=(\d*)-(\d*)/);
@@ -79,6 +88,10 @@ export async function startServer(core: Core): Promise<ServerRole> {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         return res.end(readFileSync(STUDIO_HTML, "utf8").replace("__FLOW_TOKEN__", token));
       }
+      if (req.method === "GET" && url.pathname === "/custom.js") {
+        res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" });
+        return res.end(existsSync(STUDIO_CUSTOM_JS) ? readFileSync(STUDIO_CUSTOM_JS, "utf8") : "");
+      }
 
       const given = req.headers["x-flow-token"] ?? url.searchParams.get("token");
       if (given !== token) return json(res, 401, { error: "Missing or wrong token." });
@@ -98,6 +111,11 @@ export async function startServer(core: Core): Promise<ServerRole> {
         const shape = (shapes as Record<string, z.ZodRawShape>)[method];
         const args = shape ? z.object(shape).parse(JSON.parse(raw)) : undefined;
         return json(res, 200, await (core[method] as (a: unknown) => Promise<unknown>)(args));
+      }
+      if (req.method === "POST" && method) {
+        const raw = (await readBody(req, 1024 * 1024)).toString() || "{}";
+        const custom = await dispatchCustomApi(String(method), raw);
+        if (custom.handled) return json(res, 200, custom.result);
       }
       json(res, 404, { error: "Not found." });
     } catch (err) {
