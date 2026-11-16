@@ -11,6 +11,7 @@ import {
   saveStyle,
 } from "./library.js";
 import { composePrompt, planStoryboard } from "./prompt_composer.js";
+import { XFADE_TRANSITIONS, proEditVideo } from "./pro_editor.js";
 import {
   addCatalogOption,
   deleteSelectorOverride,
@@ -183,6 +184,47 @@ export const customShapes = {
     timestampSec: z.number().min(0).optional(),
     outputPath: z.string().optional(),
   },
+
+  flow_pro_edit: {
+    project: z.string().optional(),
+    outputName: z.string().optional(),
+    outputPath: z.string().optional(),
+    defaultTransition: z.enum(XFADE_TRANSITIONS).optional(),
+    defaultTransitionDuration: z.number().min(0.15).max(2.5).optional(),
+    grade: z.enum(["none", "warm-cinema", "golden-dream", "pastel-soft", "canyon-fresh"]).optional(),
+    subtitleAssPath: z.string().optional(),
+    ctaOverlay: z
+      .object({
+        duration: z.number().min(1.5).max(8).optional(),
+        likeText: z.string().optional(),
+        commentText: z.string().optional(),
+        subscribeText: z.string().optional(),
+        subscribedText: z.string().optional(),
+        headerText: z.string().optional(),
+        yPercent: z.number().min(15).max(85).optional(),
+      })
+      .optional(),
+    startFade: z.number().min(0).max(5).optional(),
+    endFade: z.number().min(0).max(5).optional(),
+    musicPath: z.string().optional(),
+    musicVolume: z.number().min(0).max(1.5).optional(),
+    loudness: z.number().min(-30).max(-9).optional(),
+    fps: z.number().int().min(24).max(60).optional(),
+    size: z.string().optional(),
+    clips: z
+      .array(
+        z.object({
+          path: z.string().min(1),
+          from: z.number().min(0).optional(),
+          to: z.number().positive().optional(),
+          tailPad: z.number().min(0).max(3).optional(),
+          volume: z.number().min(0).max(2).optional(),
+          transition: z.enum(XFADE_TRANSITIONS).optional(),
+          transitionDuration: z.number().min(0.15).max(2.5).optional(),
+        }),
+      )
+      .min(1),
+  },
 } as const;
 
 type CustomMethod = keyof typeof customShapes;
@@ -213,6 +255,7 @@ const handlers: Record<CustomMethod, (args: any) => Promise<unknown>> = {
   flow_ui_action_run: async (a) => runCustomAction(a.name, a.vars ?? {}),
 
   flow_vertical_export: async (a) => (a.previewOnly ? previewVerticalFrame(a) : exportVerticalVideo(a)),
+  flow_pro_edit: async (a) => proEditVideo(a),
 };
 
 const TOOL_META: Record<CustomMethod, { title: string; description: string; readOnly?: boolean }> = {
@@ -236,6 +279,7 @@ const TOOL_META: Record<CustomMethod, { title: string; description: string; read
   flow_ui_action_save: { title: "Save a custom UI action macro", description: "Record a reusable sequence of UI clicks/fills/waits for new Flow features." },
   flow_ui_action_run: { title: "Run a custom UI action macro", description: "Execute a saved custom UI macro on the live Flow page." },
   flow_vertical_export: { title: "Export or preview 9:16 vertical video", description: "Convert a 16:9 video to 9:16 (blur-fill or center-crop) or render a safe-zone preview frame with FFmpeg." },
+  flow_pro_edit: { title: "Pro video edit with xfade & color grade", description: "Assemble clips into a polished MP4 using xfade video transitions, acrossfade audio, rhythmic trims, color grading, opening/closing fades, and loudness normalization." },
 };
 
 type ReplyFn = (work: Promise<unknown>, extra?: object) => Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }>;

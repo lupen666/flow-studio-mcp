@@ -9,6 +9,7 @@
     { id: "locations", label: "Locations", sub: "environments" },
     { id: "avatars", label: "Avatars", sub: "multi-angle" },
     { id: "director", label: "Director", sub: "prompt studio" },
+    { id: "proedit", label: "Pro Edit", sub: "xfade & grade" },
     { id: "vertical", label: "Vertical", sub: "9:16 export" },
     { id: "inspector", label: "Inspector", sub: "UI & selectors" },
   ];
@@ -136,6 +137,42 @@
           <textarea id="dirCompiledPrompt" style="min-height:95px"></textarea>
           <p class="empty" id="dirMetaInfo" style="margin-top:8px"></p>
         </div>
+      </div>
+    </section>
+
+    <!-- PRO EDIT -->
+    <section class="panel" data-panel="proedit">
+      <div class="step">Post-Production</div>
+      <h2>Pro Edit (Smooth Transitions &amp; Color)</h2>
+      <p class="lede">Join clips with smooth xfade video transitions, acrossfade audio, rhythmic trims, color grading, and EBU R128 loudness normalization.</p>
+      <div class="card">
+        <div class="grid2">
+          <div><label class="f">Project folder</label><input type="text" id="peProject" value="pro-edit"></div>
+          <div><label class="f">Output filename (without .mp4)</label><input type="text" id="peOutName" value="final_pro"></div>
+        </div>
+        <label class="f">Clip paths (one per line, or path|from|to|transition)</label>
+        <textarea id="peClips" style="min-height:110px" placeholder="/path/to/scene-01.mp4|0.2|8.5|dissolve"></textarea>
+        <div class="grid2">
+          <div>
+            <label class="f">Default transition</label>
+            <select id="peTrans"><option value="dissolve">dissolve</option><option value="smoothup">smoothup</option><option value="smoothdown">smoothdown</option><option value="smoothleft">smoothleft</option><option value="smoothright">smoothright</option><option value="hlwind">hlwind</option><option value="hrwind">hrwind</option><option value="hblur">hblur</option><option value="zoomin">zoomin</option><option value="fade">fade</option><option value="fadeblack">fadeblack</option><option value="fadewhite">fadewhite</option><option value="wipeleft">wipeleft</option><option value="wiperight">wiperight</option><option value="circleopen">circleopen</option><option value="circlecrop">circlecrop</option><option value="radial">radial</option></select>
+          </div>
+          <div><label class="f">Transition duration (sec)</label><input type="number" id="peTransDur" value="0.7" min="0.15" max="2.5" step="0.1"></div>
+        </div>
+        <div class="grid2">
+          <div>
+            <label class="f">Color grade</label>
+            <select id="peGrade"><option value="warm-cinema">warm-cinema</option><option value="golden-dream">golden-dream</option><option value="pastel-soft">pastel-soft</option><option value="none">none</option></select>
+          </div>
+          <div><label class="f">Music path (optional .mp3/.wav)</label><input type="text" id="peMusic" placeholder="/path/to/music.mp3"></div>
+        </div>
+        <div class="grid2">
+          <div><label class="f">Opening fade (sec)</label><input type="number" id="peStartFade" value="0.7" min="0" max="5" step="0.1"></div>
+          <div><label class="f">Closing fade (sec)</label><input type="number" id="peEndFade" value="1.2" min="0" max="5" step="0.1"></div>
+        </div>
+        <label class="f" style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="peCta" style="width:auto"> Add animated Like / Comment / Subscribe end card</label>
+        <div class="rowbtns"><button class="btn" id="peRunBtn">Render Pro Edit MP4</button></div>
+        <div id="peResult" style="margin-top:12px"></div>
       </div>
     </section>
 
@@ -384,6 +421,36 @@
       const res = await api("generate", { project: "director", scenes: [scene] });
       info.textContent = `Queued! Job IDs: ${(res.jobs ?? []).map((j) => j.id).join(", ")}`;
     } catch (err) { info.textContent = `Queue error: ${err.message}`; }
+  };
+
+  // Pro Edit handler
+  document.getElementById("peRunBtn").onclick = async () => {
+    const host = document.getElementById("peResult");
+    host.innerHTML = `<span class="empty">Rendering Pro Edit MP4...</span>`;
+    try {
+      const clips = val("peClips").split("\n").map((l) => l.trim()).filter(Boolean).map((line) => {
+        const [path, from, to, transition] = line.split("|").map((s) => s.trim());
+        return {
+          path,
+          ...(from ? { from: Number(from) } : {}),
+          ...(to ? { to: Number(to) } : {}),
+          ...(transition ? { transition } : {}),
+        };
+      });
+      const res = await api("flow_pro_edit", {
+        project: val("peProject") || "pro-edit",
+        outputName: val("peOutName") || "final_pro",
+        clips,
+        defaultTransition: val("peTrans"),
+        defaultTransitionDuration: Number(val("peTransDur")) || 0.7,
+        grade: val("peGrade"),
+        startFade: Number(val("peStartFade")),
+        endFade: Number(val("peEndFade")),
+        ...(document.getElementById("peCta")?.checked ? { ctaOverlay: { duration: 3.2 } } : {}),
+        ...(val("peMusic") ? { musicPath: val("peMusic") } : {}),
+      });
+      host.innerHTML = `<p class="empty">Saved (${res.duration}s): <b>${esc(res.outputPath)}</b></p><video controls src="${media(res.outputPath)}" style="max-height:360px;border-radius:8px"></video>`;
+    } catch (err) { host.innerHTML = `<span class="empty">Error: ${esc(err.message)}</span>`; }
   };
 
   // Vertical handlers
